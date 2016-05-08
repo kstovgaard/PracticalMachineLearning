@@ -1,0 +1,164 @@
+---
+title: "Practical Machine Learning Project"
+author: "Kasper Stovgaard"
+date: "May 7, 2016"
+output: html_document
+---
+
+This project concerns prediction of the "classe" variable for a provided HAR dataset. A model is constructed using the caret package, and applied to a seperate test set of 20 observations. The construction of the model and R-code involved is described below.
+
+### Input data
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+The training and test data was downloaded from:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+### Setup
+Initially, the caret package was imported and the seed set for reproducibility
+```{r}
+library(caret)
+set.seed(42)
+```
+
+### Cleaning/preparing data
+The downloaded training dataset was loaded and the size checked
+```{r}
+training_df <- read.csv("C:/Users/KAST/Documents/PracticalMachineLearning/pml-training.csv")
+dim(training_df)
+```
+Due to the large maount of training data, the applied features were filtered before training an actual model. This was done to reduce the curse of dimensionality and to obtain reasonable training times. The first five columns were immediately removed as these include row index and timestamps, insignificant for the prediction.
+
+```{r}
+reduced_trainingset <- training_df
+reduced_trainingset[c(1:5)] <- list(NULL)
+```
+
+From a quick glance at the dataframe, several of the remaining columns were seen to contain almost exclusively "NA" values. Thus, features containing more than 90% "NA" values sorted out, as these would likely not add much information for the prediction. 
+
+```{r}
+reduced_trainingset <- reduced_trainingset[,colSums(is.na(reduced_trainingset))<length(reduced_trainingset)*0.9]
+```
+
+Finally, the nearZeroVar function (caret) was used to identify and remove features with an insignificant variance.
+
+```{r}
+nearZerVarCols <- nearZeroVar(reduced_trainingset)
+reduced_trainingset[nearZerVarCols] <- list(NULL)
+```
+
+These steps efficiently reduced the number of features applied in the model training
+
+```{r}
+dim(reduced_trainingset)
+```
+
+### Model training and evaluation
+Based on the focus of high accuracy prediction, and less on model interpretation, the RandomForest method was selected for training the model
+
+Due to time constraints on the computationally heavy training, only a subset of the training data is used initially. Below, a series of trainings with increasing training data size is included for learning curve estimation.
+
+```{r,eval=FALSE}
+rfModel <- train(classe ~ ., method = "rf", data = reduced_trainingset)
+```
+
+In random forests, there is no need for cross-validation or a separate test set to get an unbiased estimate of the test set error. The out-of-bag error is estimated internally, during the run, as follows:
+
+Each tree is constructed using a different bootstrap sample from the original data. About one-third of the cases are left out of the bootstrap sample and not used in the construction of the kth tree.
+
+Put each case left out in the construction of the kth tree down the kth tree to get a classification. In this way, a test set classification is obtained for each case in about one-third of the trees. At the end of the run, take j to be the class that got most of the votes every time case n was oob. The proportion of times that j is not equal to the true class of n averaged over all cases is the oob error estimate. This has proven to be unbiased in many tests. [Leo Breiman and Adele Cutler: Random Forests, Machine Learning Journal]
+
+The expected performance of this model is therefore
+
+```{r,eval = FALSE}
+confusionMatrix(rfModel)
+```
+
+Bootstrapped (25 reps) Confusion Matrix 
+
+(entries are percentual average cell counts across resamples)
+ 
+          Reference
+Prediction    A    B    C    D    E
+            A 28.3  0.3  0.0  0.0  0.0
+            B  0.0 19.2  0.3  0.0  0.0
+            C  0.0  0.1 17.2  0.2  0.0
+            D  0.0  0.0  0.1 16.0  0.1
+            E  0.0  0.0  0.0  0.0 18.2
+                            
+ Accuracy (average) : 0.9885
+ 
+In order to check whether this model can benefit from more training data, a crude learning curve is constructed for training data subsets of 10, 33 and 66 percent.
+
+```{r,eval=FALSE}
+inTrain_10percent <- createDataPartition(reduced_trainingset$classe,p=0.1,list=FALSE)
+training_10percent <- reduced_trainingset[inTrain_10percent,]
+rfModel_10percent <- train(classe ~ ., method = "rf", data = training_10percent)
+confusionMatrix(rfModel_10percent)
+```
+
+Bootstrapped (25 reps) Confusion Matrix 
+
+(entries are percentual average cell counts across resamples)
+ 
+          Reference
+Prediction    A    B    C    D    E
+         A 27.6  0.8  0.0  0.1  0.0
+         B  0.2 17.5  0.8  0.1  0.2
+         C  0.0  0.8 16.9  0.8  0.2
+         D  0.4  0.1  0.2 15.6  0.3
+         E  0.1  0.1  0.0  0.1 17.0
+                            
+ Accuracy (average) : 0.9456
+
+```{r,eval=FALSE}
+inTrain_33percent <- createDataPartition(reduced_trainingset$classe,p=0.33,list=FALSE)
+training_33percent <- reduced_trainingset[inTrain_33percent,]
+rfModel_33percent <- train(classe ~ ., method = "rf", data = training_33percent)
+confusionMatrix(rfModel_33percent)
+```
+
+Bootstrapped (25 reps) Confusion Matrix 
+
+(entries are percentual average cell counts across resamples)
+ 
+          Reference
+Prediction    A    B    C    D    E
+         A 28.3  0.3  0.0  0.0  0.0
+         B  0.0 19.2  0.3  0.0  0.0
+         C  0.0  0.1 17.2  0.2  0.0
+         D  0.0  0.0  0.1 16.0  0.1
+         E  0.0  0.0  0.0  0.0 18.2
+                            
+ Accuracy (average) : 0.9885
+
+```{r,eval=FALSE}
+inTrain_66percent <- createDataPartition(reduced_trainingset$classe,p=0.66,list=FALSE)
+training_66percent <- reduced_trainingset[inTrain_66percent,]
+rfModel_66percent <- train(classe ~ ., method = "rf", data = training_66percent)
+confusionMatrix(rfModel_66percent)
+```
+ 
+
+It is seen that the prediction accurary is already quite high when training on only 10% of the available data (95%), but still increases with more data.
+
+### Prediction results
+
+The test set is loaded and features selected for the training are extracted.
+
+```{r}
+test_df <- read.csv("C:/Users/KAST/Documents/PracticalMachineLearning/pml-testing.csv")
+selected_feature_names <- colnames(reduced_trainingset)
+reduced_testset <- test_df[, (names(test_df) %in% selected_feature_names)]
+```
+
+The trained model is applied to predict the test set classes with the following result:
+
+```{r,eval = FALSE}
+predict(rfModel,reduced_testset)
+```
+
+B A B A A E D B A A B C B A E E A B B B
+Levels: A B C D E
+
+
